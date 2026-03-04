@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Invoice Generator — Local Test</title>
+</head>
+<body>
+    <h1>Invoice Generator Plugin Test</h1>
+    <p>Tests PDF generation without Bubble.</p>
+    <button id="btn">Generate Test Invoice</button>
+    <pre id="log"></pre>
+
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+    <script src="../src/receipt-generator-core.js"></script>
+    <script>
+    document.getElementById('btn').onclick = function() {
+        var logEl = document.getElementById('log');
+        logEl.textContent = '';
+        if (typeof window.ReceiptGeneratorCore === 'undefined') {
+            logEl.textContent = 'Core not loaded. Serve via local server (file:// may block scripts).';
+            return;
+        }
+        var core = new window.ReceiptGeneratorCore();
+        var opts = {
+            is_payment_confirmed: true,
+            invoice_number: 'INV-TEST-001',
+            invoice_date: new Date().toISOString().slice(0, 10),
+            seller_name: 'Acme Inc',
+            seller_address: '123 Main St\nCity, State 12345',
+            buyer_name: 'Test Client',
+            buyer_address: '456 Client Ave\nTown, ST 67890',
+            line_items_json: '[{"description":"Consulting","quantity":10,"unitPrice":100},{"description":"Design","quantity":1,"unitPrice":500}]',
+            currency: 'USD',
+            notes: 'Thank you for your business.'
+        };
+        try {
+            core.generate(opts, {
+                onSuccess: function(d) {
+                    if (d.data_url && d.filename) {
+                        var a = document.createElement('a');
+                        a.href = d.data_url;
+                        a.download = d.filename;
+                        a.click();
+                    }
+                    logEl.textContent = 'PDF generated: ' + d.filename + '\nCheck Downloads folder.';
+                },
+                onError: function(d) { logEl.textContent = 'Error: ' + d.message; }
+            });
+        } catch (e) {
+            logEl.textContent = 'Error: ' + e.message;
+        }
+    };
+    </script>
+</body>
+</html>

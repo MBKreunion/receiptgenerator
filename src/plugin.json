@@ -1,0 +1,80 @@
+{
+  "name": "Receipt Generator",
+  "description": "Post-payment receipt PDF. Trigger after Stripe/online payment. Client-side (0 WU), secure. Auto-calc, PAID watermark, upload to Bubble for email.",
+  "version": "3.0.0",
+  "author": "Receipt Generator",
+  "category": "tools",
+  "subcategory": "utilities",
+  "icon": "receipt_long",
+  "min_bubble_version": "3.0.0",
+  "elements": [
+    {
+      "type": "visual",
+      "name": "Receipt Generator",
+      "description": "Place on post-payment page. Configure brand. Use Generate & Upload Receipt after Stripe success. Map transaction_id and total from payment provider.",
+      "icon": "receipt_long",
+      "fields": [
+        {"id": "brand_color", "name": "Brand Color (Hex)", "type": "text", "default": "#0d6efd", "optional": true},
+        {"id": "company_name", "name": "Seller / Company Name", "type": "text", "optional": true},
+        {"id": "company_address", "name": "Seller Address", "type": "text", "optional": true},
+        {"id": "currency", "name": "Currency Code", "type": "text", "default": "USD", "optional": true}
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "id": "generate_receipt_pdf",
+      "name": "Generate Receipt PDF",
+      "description": "Generate and download receipt PDF to browser.",
+      "fields": [
+        {"id": "debug_mode", "name": "Debug Mode", "type": "boolean", "optional": true, "default": false, "description": "Log every step to console. Disable in production."},
+        {"id": "is_payment_confirmed", "name": "Payment Confirmed", "type": "boolean", "description": "Mandatory. Pass Stripe Charge's succeeded (boolean). Security guardrail."},
+        {"id": "transaction_id", "name": "Transaction ID", "type": "text", "description": "From Stripe/payment provider. Required for security."},
+        {"id": "payment_method", "name": "Payment Method", "type": "text", "optional": true, "description": "e.g. Visa ****1242"},
+        {"id": "paid_date", "name": "Paid Date", "type": "text", "optional": true},
+        {"id": "seller_name", "name": "Seller Name", "type": "text", "optional": true},
+        {"id": "seller_address", "name": "Seller Address", "type": "text", "optional": true},
+        {"id": "buyer_name", "name": "Buyer Name", "type": "text"},
+        {"id": "buyer_address", "name": "Buyer Address", "type": "text", "optional": true},
+        {"id": "line_items_json", "name": "Line Items (JSON)", "type": "text", "description": "[{description, quantity, unit_price}] — amount auto-calc if omitted"},
+        {"id": "total", "name": "Total", "type": "text", "description": "From payment provider. Auto-calc if only line items provided."},
+        {"id": "currency_code", "name": "Currency Code", "type": "text", "optional": true, "default": "USD"},
+        {"id": "is_mobile", "name": "Mobile Layout", "type": "boolean", "optional": true, "default": false},
+        {"id": "notes", "name": "Notes", "type": "text", "optional": true}
+      ]
+    },
+    {
+      "id": "generate_and_upload_receipt",
+      "name": "Generate & Upload Receipt",
+      "description": "Generate receipt PDF, upload to Bubble storage, return file_url. Use in workflow: Stripe success → this → pdf_is_ready → Send Email with pdf_url.",
+      "fields": [
+        {"id": "debug_mode", "name": "Debug Mode", "type": "boolean", "optional": true, "default": false},
+        {"id": "is_payment_confirmed", "name": "Payment Confirmed", "type": "boolean", "description": "Mandatory. Pass Stripe Charge's succeeded."},
+        {"id": "transaction_id", "name": "Transaction ID", "type": "text"},
+        {"id": "payment_method", "name": "Payment Method", "type": "text", "optional": true},
+        {"id": "paid_date", "name": "Paid Date", "type": "text", "optional": true},
+        {"id": "seller_name", "name": "Seller Name", "type": "text", "optional": true},
+        {"id": "seller_address", "name": "Seller Address", "type": "text", "optional": true},
+        {"id": "buyer_name", "name": "Buyer Name", "type": "text"},
+        {"id": "buyer_address", "name": "Buyer Address", "type": "text", "optional": true},
+        {"id": "line_items_json", "name": "Line Items (JSON)", "type": "text"},
+        {"id": "total", "name": "Total", "type": "text", "optional": true},
+        {"id": "currency_code", "name": "Currency Code", "type": "text", "optional": true},
+        {"id": "is_mobile", "name": "Mobile Layout", "type": "boolean", "optional": true},
+        {"id": "notes", "name": "Notes", "type": "text", "optional": true}
+      ]
+    }
+  ],
+  "states": [
+    {"id": "last_pdf_filename", "name": "Last PDF Filename", "type": "text"},
+    {"id": "pdf_url", "name": "PDF URL", "type": "text", "description": "Bubble file URL after upload. Use in Send Email attachment."},
+    {"id": "last_error", "name": "Last Error", "type": "text"}
+  ],
+  "events": [
+    {"id": "pdf_generated", "name": "PDF Generated", "description": "Fired when receipt PDF was downloaded."},
+    {"id": "pdf_is_ready", "name": "PDF is Ready", "description": "Fired when receipt uploaded to Bubble. Use pdf_url in Send Email."},
+    {"id": "pdf_error", "name": "PDF Error", "description": "Fired when generation or upload failed."}
+  ],
+  "dependencies": [],
+  "browser_requirements": {}
+}

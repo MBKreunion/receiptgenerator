@@ -1,0 +1,52 @@
+1. The "Format as Text" JSON Content
+Tell your users to paste this into the "Content" box of the Bubble "format as text" window:
+json
+{
+  "name": "This Item's Name:find & replace (", \")",
+  "quantity": This Item's Quantity,
+  "unit_price": This Item's Price,
+  "description": "This Item's Description:find & replace (", \")"
+}
+Use code with caution.
+
+Delimiter: Use a comma ,
+Why the find & replace? This is the "Secret Sauce." If a user enters a double quote (e.g., 15" Screen), it will break your JSON. This sanitizes it automatically. [1][3]
+2. The Final Cursor "Hardening" Prompt
+To make the code truly "Zero-Config" and handle the "back-and-forth" issues you mentioned, send this to Cursor:
+"Update the ReceiptGeneratorCore with these Production-Hardening features:
+Input Sanitizer: Add a function to strip currency symbols ($, £, ¥) and commas from any input string before performing math. [2][4]
+Async Protection: Ensure onSuccess only triggers inside the reader.onloadend callback of the FileReader. This prevents Bubble from trying to send an empty email before the PDF is encoded. [5]
+Debug Logger: If opt.debug_mode is true, use console.table(lineItems) and console.log for every calculation step. [4]
+Base64 Return: Ensure the output is a clean Base64 string (no data:application/pdf;base64, prefix) as Bubble's file uploaders usually expect raw Base64." [5]
+3. The "Unattended" Workflow (The Final Piece)
+To make this work seamlessly on all devices without you touching it again, set up the Bubble Workflow like this:
+Event: Stripe Payment Succeeded.
+Action: Generate Receipt (Your Plugin).
+Input: Line Items (formatted as text using the JSON above).
+Input: Transaction ID (from Stripe).
+Event: When Receipt - PDF is Ready (A "Trigger Event" in your plugin).
+Action: Send Email.
+Attachment: This Receipt's Generated URL.
+Summary of Success
+By following this, you solve:
+Data Breaks: The :find & replace handles special characters. [1]
+Timing Issues: The PDF is Ready event ensures the file exists before emailing. [5]
+Math Errors: Cursor's "Input Sanitizer" handles users typing "$10.00" instead of "10". [4]
+
+
+
+
+Why this makes it "Zero-Config" for your User:
+By giving Cursor these instructions, the User's Workflow becomes incredibly simple:
+Step 1: Use your "Generate" action.
+Step 2: Use the event "When Receipt PDF is Ready".
+Step 3: Send Email.
+No code, no timers, no debugging. It just works.
+The "Plugin Properties" Checklist
+To finish the setup in the Bubble Plugin Editor, you need to manually add these fields in the "Properties" tab so the code has data to work with:
+Property ID	Type	Default Value
+is_payment_confirmed	Checkbox	no
+line_items_json	Dynamic Value (Text)	(Empty)
+brand_color	Dynamic Value (Text)	#0d6efd
+currency_code	Dynamic Value (Text)	USD
+is_mobile	Checkbox	no

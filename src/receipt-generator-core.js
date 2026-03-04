@@ -1,0 +1,297 @@
+/**
+ * Receipt Generator Core — Production-Ready Post-Payment Receipt PDF for Bubble.io
+ * @version 3.0.0
+ * @description Security: is_payment_confirmed only. Auto-calc subtotal/tax/grand_total from line_items.
+ * Intl.NumberFormat for currency. PAID watermark (green, 0.1 opacity). Mobile vertical cards.
+ * No doc.save — Base64 output for Bubble uploadContent.
+ */
+(function() {
+'use strict';
+
+function parseHex(hex) {
+    var m = (hex || '').replace(/^#/, '').match(/^([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/);
+    return m ? { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) } : null;
+}
+
+function getCurrencyFormatter(currencyCode) {
+    var code = (currencyCode || 'USD').trim().toUpperCase();
+    try {
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: code });
+    } catch (e) {
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+    }
+}
+
+function formatCurrency(fmt, num) {
+    return fmt.format(typeof num === 'number' ? num : parseFloat(num) || 0);
+}
+
+function sanitizeCurrency(val) {
+    if (val == null || val === '') return null;
+    var s = String(val).replace(/[\s\u00A0,€$£¥¢¤₹₩₪₽\u20AC\u00A3\u00A5]/g, '');
+    var n = parseFloat(s);
+    return isNaN(n) ? null : n;
+}
+
+function debugLog(enable, step, data) {
+    if (enable && typeof console !== 'undefined' && console.log) {
+        console.log('[ReceiptGenerator] ' + step, data !== undefined ? data : '');
+    }
+}
+
+function round2(n) {
+    return Math.round(n * 100) / 100;
+}
+
+function ReceiptGeneratorCore() {}
+
+ReceiptGeneratorCore.prototype.generate = function(options, callbacks) {
+    var cb = callbacks || {};
+    var onSuccess = cb.onSuccess || function() {};
+    var onError = cb.onError || function() {};
+
+    try {
+        if (typeof window.jspdf === 'undefined' || !window.jspdf.jsPDF) {
+            throw new Error('jsPDF not loaded. Check Shared HTML Header.');
+        }
+        var jsPDF = window.jspdf.jsPDF;
+        var doc = new jsPDF();
+        var opt = options || {};
+        var debug = !!opt.debug_mode;
+        debugLog(debug, '1.init', { options: opt });
+        if (!opt.is_payment_confirmed) {
+            throw new Error('Security Error: Payment not verified.');
+        }
+
+        var currencyCode = String(opt.currency_code || opt.currency || 'USD').trim().toUpperCase() || 'USD';
+        var fmt = getCurrencyFormatter(currencyCode);
+        var brandColor = opt.brand_color || '#0d6efd';
+        var brandRgb = parseHex(brandColor);
+        var isMobile = !!opt.is_mobile;
+        var baseFontSize = isMobile ? 12 : 10;
+        var titleFontSize = isMobile ? 20 : 22;
+
+        var invNum = String(opt.invoice_number || opt.transaction_id || 'RCP-001');
+        var invDate = String(opt.invoice_date || opt.paid_date || new Date().toISOString().slice(0, 10));
+        var transactionId = String(opt.transaction_id || invNum);
+        var paymentMethod = String(opt.payment_method || '');
+        var paidDate = String(opt.paid_date || invDate);
+
+        var sellerInfo = opt.seller_info || {};
+        var sellerName = String(sellerInfo.name || sellerInfo.company_name || opt.seller_name || '');
+        var sellerAddr = String(sellerInfo.address || opt.seller_address || '').replace(/\\n/g, '\n');
+
+        var buyerInfo = opt.buyer_info || {};
+        var buyerName = String(buyerInfo.name || opt.buyer_name || 'Customer');
+        var buyerAddr = String(buyerInfo.address || opt.buyer_address || '').replace(/\\n/g, '\n');
+
+        var notes = String(opt.notes || '');
+        var filename = String(opt.filename || 'receipt-' + invNum.replace(/[^a-zA-Z0-9\-_]/g, '_') + '.pdf').replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+
+        var lineItemsRaw = opt.line_items_json || opt.line_items;
+        var lineItems = [];
+        if (lineItemsRaw) {
+            if (typeof lineItemsRaw === 'string') {
+                try { lineItems = JSON.parse(lineItemsRaw); } catch (e) { lineItems = []; }
+            } else if (Array.isArray(lineItemsRaw)) { lineItems = lineItemsRaw; }
+        }
+        if (!Array.isArray(lineItems)) lineItems = [];
+
+        var calcedSubtotal = 0;
+        for (var i = 0; i < lineItems.length; i++) {
+            var it = lineItems[i];
+            if (!it) continue;
+            var qty = sanitizeCurrency(it.quantity);
+            if (qty == null) qty = 0;
+            var up = sanitizeCurrency(it.unit_price || it.unitPrice);
+            if (up == null) up = 0;
+            var amtRaw = sanitizeCurrency(it.amount);
+            var amt = round2((amtRaw != null) ? amtRaw : (qty * up));
+            it._lineTotal = amt;
+            it._unitPrice = up;
+            calcedSubtotal += amt;
+        }
+        calcedSubtotal = round2(calcedSubtotal);
+        debugLog(debug, '3.lineItems', { count: lineItems.length, calcedSubtotal: calcedSubtotal });
+
+        var subtotalRaw = sanitizeCurrency(opt.subtotal);
+        var subtotal = round2((subtotalRaw != null) ? subtotalRaw : calcedSubtotal);
+        var taxAmount = 0;
+        var taxRaw = sanitizeCurrency(opt.tax_amount || opt.tax);
+        var taxRateRaw = sanitizeCurrency(opt.tax_rate);
+        if (taxRaw != null) {
+            taxAmount = round2(taxRaw);
+        } else if (taxRateRaw != null) {
+            taxAmount = round2(taxRateRaw * subtotal);
+        }
+        var grandTotalRaw = sanitizeCurrency(opt.grand_total || opt.total);
+        var grandTotal = round2((grandTotalRaw != null) ? grandTotalRaw : (subtotal + taxAmount));
+        debugLog(debug, '4.totals', { subtotal: subtotal, taxAmount: taxAmount, grandTotal: grandTotal });
+
+        var y = 20, margin = isMobile ? 24 : 20;
+        var pageW = doc.internal.pageSize.getWidth();
+        var pageH = doc.internal.pageSize.getHeight();
+        var colDesc = margin, colQty = isMobile ? 90 : 100, colPrice = isMobile ? 120 : 130, colAmt = pageW - margin - 30;
+
+        if (brandRgb) doc.setDrawColor(brandRgb.r, brandRgb.g, brandRgb.b);
+        doc.setLineWidth(0.5);
+        doc.line(margin, y, pageW - margin, y);
+        y += 8;
+
+        doc.setFontSize(titleFontSize);
+        doc.setFont(undefined, 'bold');
+        doc.text('PAYMENT RECEIPT', margin, y);
+        doc.setFontSize(baseFontSize);
+        doc.setFont(undefined, 'normal');
+        y += 10;
+
+        doc.setFont(undefined, 'bold');
+        doc.text('Receipt #: ' + invNum, pageW - margin - doc.getTextWidth('Receipt #: ' + invNum), y);
+        y += 5;
+        doc.text('Date: ' + invDate, pageW - margin - doc.getTextWidth('Date: ' + invDate), y);
+        y += 5;
+        if (transactionId && transactionId !== invNum) doc.text('Transaction: ' + transactionId, pageW - margin - doc.getTextWidth('Transaction: ' + transactionId), y);
+        y += 5;
+        if (paymentMethod) doc.text('Paid: ' + paymentMethod, pageW - margin - doc.getTextWidth('Paid: ' + paymentMethod), y);
+        y += 5;
+        doc.text('Paid Date: ' + paidDate, pageW - margin - doc.getTextWidth('Paid Date: ' + paidDate), y);
+        doc.setFont(undefined, 'normal');
+        y += 12;
+
+        if (sellerName || sellerAddr) {
+            doc.setFont(undefined, 'bold');
+            doc.text('From', margin, y);
+            doc.setFont(undefined, 'normal');
+            y += 5;
+            if (sellerName) { doc.text(sellerName, margin, y); y += 5; }
+            var sellerLines = sellerAddr.split('\n').filter(function(l) { return l.trim() !== ''; });
+            for (var s = 0; s < sellerLines.length; s++) { doc.text(sellerLines[s], margin, y); y += 5; }
+            y += 5;
+        }
+
+        doc.setFont(undefined, 'bold');
+        doc.text('Bill To', margin, y);
+        doc.setFont(undefined, 'normal');
+        y += 5;
+        doc.text(buyerName, margin, y); y += 5;
+        var buyerLines = buyerAddr.split('\n').filter(function(l) { return l.trim() !== ''; });
+        for (var b = 0; b < buyerLines.length; b++) { doc.text(buyerLines[b], margin, y); y += 5; }
+        y += 12;
+
+        doc.setDrawColor(0);
+        doc.setLineWidth(0.3);
+        doc.line(margin, y, pageW - margin, y);
+        y += 6;
+
+        if (isMobile) {
+            debugLog(debug, '5.mobileLayout', 'vertical cards, no table headers');
+            for (var k = 0; k < lineItems.length; k++) {
+                var item = lineItems[k];
+                if (!item) continue;
+                var desc = (item.description != null ? item.description : item.name || '').toString();
+                var qty = item.quantity != null ? String(item.quantity) : '0';
+                var up = item.unit_price != null ? item.unit_price : item.unitPrice;
+                var amt = item._lineTotal != null ? item._lineTotal : 0;
+                if (desc.length > 60) desc = desc.substring(0, 57) + '...';
+                doc.setFont(undefined, 'bold');
+                doc.setFontSize(baseFontSize);
+                doc.text(desc, margin, y);
+                doc.setFont(undefined, 'normal');
+                y += 6;
+                doc.text('Qty: ' + qty, margin, y);
+                y += 5;
+                var upNum = sanitizeCurrency(up) != null ? sanitizeCurrency(up) : (typeof up === 'number' ? up : 0);
+                doc.text('Unit: ' + formatCurrency(fmt, upNum), margin, y);
+                y += 5;
+                doc.text('Total: ' + formatCurrency(fmt, amt), margin, y);
+                y += 8;
+                doc.line(margin, y, pageW - margin, y);
+                y += 6;
+                if (y > pageH - 70) { doc.addPage(); y = 20; }
+            }
+        } else {
+            doc.setFont(undefined, 'bold');
+            doc.setFontSize(baseFontSize);
+            doc.text('Description', colDesc, y);
+            doc.text('Qty', colQty, y);
+            doc.text('Unit Price', colPrice, y);
+            doc.text('Amount', colAmt, y);
+            doc.setFont(undefined, 'normal');
+            y += 6;
+            doc.line(margin, y, pageW - margin, y);
+            y += 6;
+            for (var k = 0; k < lineItems.length; k++) {
+                var item = lineItems[k];
+                if (!item) continue;
+                var desc = (item.description != null ? item.description : item.name || '').toString();
+                var qty = item.quantity != null ? String(item.quantity) : '0';
+                var up = item._unitPrice != null ? item._unitPrice : 0;
+                var amt = item._lineTotal != null ? item._lineTotal : 0;
+                if (desc.length > 45) desc = desc.substring(0, 42) + '...';
+                doc.text(desc, colDesc, y);
+                doc.text(qty, colQty, y);
+                doc.text(formatCurrency(fmt, up), colPrice, y);
+                doc.text(formatCurrency(fmt, amt), colAmt, y);
+                y += 6;
+                if (y > pageH - 60) { doc.addPage(); y = 20; }
+            }
+        }
+
+        y += 8;
+        doc.line(colPrice, y, pageW - margin, y);
+        y += 6;
+        doc.text('Subtotal', colPrice, y);
+        doc.text(formatCurrency(fmt, subtotal), colAmt, y);
+        y += 6;
+        if (taxAmount > 0) {
+            doc.text('Tax', colPrice, y);
+            doc.text(formatCurrency(fmt, taxAmount), colAmt, y);
+            y += 6;
+        }
+        doc.setFont(undefined, 'bold');
+        doc.text('Total', colPrice, y);
+        doc.text(formatCurrency(fmt, grandTotal), colAmt, y);
+        doc.setFont(undefined, 'normal');
+        y += 12;
+
+        if (notes) {
+            var noteLines = notes.split('\n');
+            for (var n = 0; n < noteLines.length; n++) { doc.text(noteLines[n], margin, y); y += 5; }
+        }
+
+        doc.setTextColor(0, 150, 0);
+        doc.setFontSize(60);
+        doc.saveGraphicsState && doc.saveGraphicsState();
+        if (typeof doc.setGState === 'function' && doc.GState) {
+            doc.setGState(new doc.GState({ opacity: 0.1 }));
+        }
+        doc.text('PAID', pageW / 2, pageH / 2, { align: 'center', angle: 45 });
+        doc.restoreGraphicsState && doc.restoreGraphicsState();
+        doc.setTextColor(0, 0, 0);
+
+        var dataUri = doc.output('datauristring');
+        var base64String = dataUri.indexOf(',') >= 0 ? dataUri.split(',')[1] : dataUri;
+        var dataUrl = 'data:application/pdf;base64,' + base64String;
+        var result = {
+            base64: base64String,
+            file_base64: base64String,
+            data_url: dataUrl,
+            filename: filename,
+            contentType: 'application/pdf',
+            subtotal: subtotal,
+            tax_amount: taxAmount,
+            grand_total: grandTotal
+        };
+        debugLog(debug, '6.base64Output', { len: base64String ? base64String.length : 0, hasDataUrl: !!dataUrl });
+        if (typeof onSuccess === 'function') onSuccess(result);
+        return result;
+    } catch (err) {
+        var msg = err && err.message ? err.message : String(err);
+        if (typeof onError === 'function') onError({ message: msg });
+        throw err;
+    }
+};
+
+window.ReceiptGeneratorCore = ReceiptGeneratorCore;
+window.InvoiceGeneratorCore = ReceiptGeneratorCore;
+})();

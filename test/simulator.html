@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Receipt Generator — User Simulator</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 24px; background: #f5f5f5; }
+        .container { max-width: 680px; margin: 0 auto; background: white; padding: 32px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+        h1 { margin: 0 0 8px; font-size: 1.5rem; color: #1a1a1a; }
+        .subtitle { color: #666; margin-bottom: 24px; font-size: 0.9rem; }
+        .section { margin-bottom: 24px; }
+        .section-title { font-weight: 600; color: #333; margin-bottom: 12px; font-size: 0.95rem; }
+        label { display: block; font-size: 0.85rem; color: #555; margin-bottom: 4px; }
+        input, textarea { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.95rem; font-family: inherit; }
+        textarea { min-height: 60px; resize: vertical; }
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .line-items { border: 1px solid #eee; border-radius: 6px; overflow: hidden; }
+        .line-item { display: grid; grid-template-columns: 2fr 60px 80px 80px 40px; gap: 8px; align-items: end; padding: 12px; border-bottom: 1px solid #eee; }
+        .line-item:last-child { border-bottom: none; }
+        .line-item input { margin: 0; }
+        .line-item-header { font-size: 0.75rem; color: #888; text-transform: uppercase; font-weight: 600; }
+        .btn-add { padding: 8px 16px; background: #e8e8e8; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+        .btn-add:hover { background: #ddd; }
+        .btn-generate { width: 100%; padding: 14px 24px; background: #0d6efd; color: white; border: none; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 8px; }
+        .btn-generate:hover { background: #0b5ed7; }
+        .btn-generate:disabled { background: #adb5bd; cursor: not-allowed; }
+        .result { margin-top: 20px; padding: 16px; border-radius: 6px; font-size: 0.9rem; display: none; }
+        .result.success { background: #d1e7dd; color: #0f5132; }
+        .result.error { background: #f8d7da; color: #842029; }
+        .result.visible { display: block; }
+        .btn-remove { background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; padding: 6px 10px; font-size: 0.8rem; }
+        .btn-remove:hover { background: #bb2d3b; }
+        @media (max-width: 600px) {
+            .row { grid-template-columns: 1fr; }
+            .line-item { grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; }
+            .line-item .btn-remove { grid-column: span 2; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Receipt Generator — User Simulator</h1>
+        <p class="subtitle">Post-payment receipt. Simulates data from Stripe/payment provider. Try Download or Base64 (for upload).</p>
+
+        <div class="section">
+            <div class="section-title">Payment Details</div>
+            <div class="row">
+                <div>
+                    <label>Transaction ID (from Stripe)</label>
+                    <input type="text" id="transaction_id" value="pi_3ABC123" placeholder="pi_xxx">
+                </div>
+                <div>
+                    <label>Payment Method</label>
+                    <input type="text" id="payment_method" value="Visa ****1242" placeholder="Visa ****1242">
+                </div>
+                <div>
+                    <label>Paid Date</label>
+                    <input type="text" id="paid_date" placeholder="YYYY-MM-DD">
+                </div>
+                <div>
+                    <label>Brand Color (Hex)</label>
+                    <input type="text" id="brand_color" value="#0d6efd" placeholder="#0d6efd">
+                </div>
+                <div>
+                    <label><input type="checkbox" id="is_mobile"> Mobile layout (vertical cards)</label>
+                </div>
+                <div>
+                    <label><input type="checkbox" id="debug_mode"> Debug mode (console)</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">From (Seller)</div>
+            <div class="row">
+                <div>
+                    <label>Company Name</label>
+                    <input type="text" id="seller_name" value="Acme Inc" placeholder="Your company name">
+                </div>
+                <div>
+                    <label>Address</label>
+                    <textarea id="seller_address" rows="2" placeholder="123 Main St&#10;City, State 12345">123 Main St
+City, State 12345</textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Bill To (Buyer)</div>
+            <div class="row">
+                <div>
+                    <label>Client / Customer Name</label>
+                    <input type="text" id="buyer_name" value="Client Name" placeholder="Client name">
+                </div>
+                <div>
+                    <label>Address</label>
+                    <textarea id="buyer_address" rows="2" placeholder="456 Client Ave&#10;Town, ST 67890">456 Client Ave
+Town, ST 67890</textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Line Items</div>
+            <div class="line-items">
+                <div class="line-item line-item-header">
+                    <span>Description</span><span>Qty</span><span>Unit Price</span><span>Amount</span><span></span>
+                </div>
+                <div id="line_items_container">
+                    <div class="line-item">
+                        <input type="text" name="desc" placeholder="Service or product" value="Consulting hours">
+                        <input type="number" name="qty" placeholder="Qty" value="10" min="0">
+                        <input type="number" name="unitPrice" placeholder="Price" value="100" min="0" step="0.01">
+                        <input type="number" name="amount" placeholder="Amount" value="1000" min="0" step="0.01">
+                        <button type="button" class="btn-remove" onclick="removeLine(this)">Remove</button>
+                    </div>
+                    <div class="line-item">
+                        <input type="text" name="desc" placeholder="Service or product" value="Design work">
+                        <input type="number" name="qty" placeholder="Qty" value="1" min="0">
+                        <input type="number" name="unitPrice" placeholder="Price" value="500" min="0" step="0.01">
+                        <input type="number" name="amount" placeholder="Amount" value="500" min="0" step="0.01">
+                        <button type="button" class="btn-remove" onclick="removeLine(this)">Remove</button>
+                    </div>
+                </div>
+            </div>
+            <button type="button" class="btn-add" onclick="addLine()" style="margin-top: 8px;">+ Add line item</button>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Totals</div>
+            <div class="row">
+                <div>
+                    <label>Subtotal</label>
+                    <input type="text" id="subtotal" value="1500" placeholder="1500">
+                </div>
+                <div>
+                    <label>Tax</label>
+                    <input type="text" id="tax" value="150" placeholder="150">
+                </div>
+                <div>
+                    <label>Total</label>
+                    <input type="text" id="total" value="1650" placeholder="1650">
+                </div>
+                <div>
+                    <label>Currency</label>
+                    <input type="text" id="currency" value="USD" placeholder="USD">
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <label>Notes / Payment terms (optional)</label>
+            <textarea id="notes" rows="2" placeholder="Thank you for your business. Payment due in 30 days.">Thank you for your business. Payment due in 30 days.</textarea>
+        </div>
+
+        <button type="button" class="btn-generate" id="btn_generate">Generate Receipt PDF (Download)</button>
+
+        <div id="result" class="result"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+    <script src="../src/receipt-generator-core.js"></script>
+    <script>
+        document.getElementById('paid_date').value = new Date().toISOString().slice(0, 10);
+
+        function getLineItems() {
+            var items = [];
+            document.querySelectorAll('#line_items_container .line-item').forEach(function(row) {
+                var desc = row.querySelector('[name="desc"]').value;
+                var qty = row.querySelector('[name="qty"]').value;
+                var up = row.querySelector('[name="unitPrice"]').value;
+                var amt = row.querySelector('[name="amount"]').value;
+                if (desc || qty || up || amt) {
+                    items.push({
+                        description: desc || '',
+                        quantity: parseFloat(qty) || 0,
+                        unit_price: parseFloat(up) || 0,
+                        amount: (amt && parseFloat(amt) > 0) ? parseFloat(amt) : undefined
+                    });
+                }
+            });
+            return items;
+        }
+
+        function addLine() {
+            var html = '<div class="line-item">' +
+                '<input type="text" name="desc" placeholder="Service or product">' +
+                '<input type="number" name="qty" placeholder="Qty" value="1" min="0">' +
+                '<input type="number" name="unitPrice" placeholder="Price" value="0" min="0" step="0.01">' +
+                '<input type="number" name="amount" placeholder="Amount (auto)" value="" min="0" step="0.01">' +
+                '<button type="button" class="btn-remove" onclick="removeLine(this)">Remove</button></div>';
+            document.getElementById('line_items_container').insertAdjacentHTML('beforeend', html);
+        }
+
+        function removeLine(btn) {
+            var container = document.getElementById('line_items_container');
+            if (container.children.length <= 1) return;
+            btn.closest('.line-item').remove();
+        }
+
+        function getOpts(returnBase64) {
+            var lineItems = getLineItems();
+            return {
+                debug_mode: document.getElementById('debug_mode').checked,
+                is_payment_confirmed: true,
+                transaction_id: document.getElementById('transaction_id').value || 'pi_test',
+                payment_method: document.getElementById('payment_method').value,
+                paid_date: document.getElementById('paid_date').value || new Date().toISOString().slice(0, 10),
+                seller_name: document.getElementById('seller_name').value,
+                seller_address: document.getElementById('seller_address').value.replace(/\r\n/g, '\n'),
+                buyer_name: document.getElementById('buyer_name').value || 'Customer',
+                buyer_address: document.getElementById('buyer_address').value.replace(/\r\n/g, '\n'),
+                line_items: lineItems,
+                subtotal: document.getElementById('subtotal').value || '',
+                tax: document.getElementById('tax').value || '',
+                total: document.getElementById('total').value || '',
+                currency_code: document.getElementById('currency').value || 'USD',
+                brand_color: document.getElementById('brand_color').value || '#0d6efd',
+                is_mobile: document.getElementById('is_mobile').checked,
+                notes: document.getElementById('notes').value,
+                return_base64: !!returnBase64
+            };
+        }
+
+        document.getElementById('btn_generate').onclick = function() {
+            var resultEl = document.getElementById('result');
+            resultEl.className = 'result';
+            resultEl.textContent = '';
+
+            if (typeof window.ReceiptGeneratorCore === 'undefined') {
+                resultEl.className = 'result error visible';
+                resultEl.textContent = 'Core not loaded. Serve via local server (npx serve .).';
+                return;
+            }
+
+            var opts = getOpts(false);
+            try {
+                var core = new window.ReceiptGeneratorCore();
+                core.generate(opts, {
+                    onSuccess: function(d) {
+                        if (d.data_url && d.filename) {
+                            try {
+                                var a = document.createElement('a');
+                                a.href = d.data_url;
+                                a.download = d.filename;
+                                a.style.display = 'none';
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                            } catch (e) {}
+                        }
+                        resultEl.className = 'result success visible';
+                        resultEl.textContent = 'Receipt PDF: ' + d.filename + ' — check Downloads. Auto-calc: subtotal $' + d.subtotal + ', total $' + d.grand_total;
+                    },
+                    onError: function(d) {
+                        resultEl.className = 'result error visible';
+                        resultEl.textContent = 'Error: ' + (d.message || 'Unknown error');
+                    }
+                });
+            } catch (e) {
+                resultEl.className = 'result error visible';
+                resultEl.textContent = 'Error: ' + e.message;
+            }
+        };
+    </script>
+</body>
+</html>
