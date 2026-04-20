@@ -113,8 +113,8 @@
         }
 
         // Validate transaction ID format (alphanumeric, hyphens, underscores only)
-        if (!/^[a-zA-Z0-9_\-]+$/.test(opt.transaction_id)) {
-          throw new Error('Security Error: Transaction ID contains invalid characters. Use only letters, numbers, hyphens, and underscores.');
+        if (!/^[a-zA-Z0-9_\-\.]+$/.test(opt.transaction_id)) {
+          throw new Error('Security Error: Transaction ID contains invalid characters. Use only letters, numbers, hyphens, underscores, and dots.');
         }
 
         // Prevent excessively long transaction IDs (potential DoS)
@@ -173,7 +173,7 @@
           try {
             lineItems = JSON.parse(lineItemsRaw);
           } catch (e) {
-            lineItems = [];
+            throw new Error("Invalid line_items_json: could not parse JSON. Check your Bubble expression.");
           }
         } else if (Array.isArray(lineItemsRaw)) {
           lineItems = lineItemsRaw;
@@ -459,9 +459,12 @@
   window.ReceiptGeneratorCore = ReceiptGeneratorCore;
   window.InvoiceGeneratorCore = ReceiptGeneratorCore;
 
-  // SECURITY ENHANCEMENT: Add security utility functions
+  // SECURITY ENHANCEMENT: Security utility functions (ES5-compatible)
   function generateSecurityHash(data, secret) {
-    const payload = JSON.stringify({
+    if (typeof CryptoJS === "undefined" || !CryptoJS.HmacSHA256) {
+      throw new Error("Security Error: CryptoJS not loaded. Check Shared HTML Header.");
+    }
+    var payload = JSON.stringify({
       transaction_id: data.transaction_id,
       grand_total: data.grand_total,
       currency_code: data.currency_code,
@@ -473,8 +476,8 @@
 
   function constantTimeCompare(a, b) {
     if (a.length !== b.length) return false;
-    let result = 0;
-    for (let i = 0; i < a.length; i++) {
+    var result = 0;
+    for (var i = 0; i < a.length; i++) {
       result |= a.charCodeAt(i) ^ b.charCodeAt(i);
     }
     return result === 0;

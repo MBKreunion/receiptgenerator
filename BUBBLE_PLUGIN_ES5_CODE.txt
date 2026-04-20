@@ -67,6 +67,9 @@ function(properties, context) {
             onSuccess: function(data) {
                 instance.publishState('last_pdf_filename', data.filename);
                 instance.publishState('last_error', '');
+                instance.publishState('subtotal', data.subtotal);
+                instance.publishState('tax_amount', data.tax_amount);
+                instance.publishState('grand_total', data.grand_total);
                 instance.triggerEvent('pdf_generated');
                 if (data.data_url && data.filename && typeof document !== 'undefined') {
                     try {
@@ -161,6 +164,9 @@ function(properties, context, callback) {
                     }
                     instance.publishState('pdf_url', url || '');
                     instance.publishState('last_error', '');
+                    instance.publishState('subtotal', data.subtotal);
+                    instance.publishState('tax_amount', data.tax_amount);
+                    instance.publishState('grand_total', data.grand_total);
                     instance.triggerEvent('pdf_is_ready');
                     if (typeof callback === 'function') callback({ success: true, file_url: url, filename: data.filename });
                 });
